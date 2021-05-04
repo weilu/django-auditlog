@@ -31,6 +31,8 @@ from auditlog_tests.models import (
     SimpleMappingModel,
     SimpleModel,
     UUIDPrimaryKeyModel,
+    FirstManyRelatedModel,
+    OtherManyRelatedModel,
 )
 
 
@@ -142,7 +144,7 @@ class ProxyModelTest(SimpleModelTest):
 
 class ManyRelatedModelTest(TestCase):
     """
-    Test the behaviour of a many-to-many relationship.
+    Test the behaviour of a default many-to-many relationship.
     """
 
     def setUp(self):
@@ -159,6 +161,47 @@ class ManyRelatedModelTest(TestCase):
             LogEntry.objects.get_for_objects(self.obj.related.all()).first(),
             self.rel_obj.history.first(),
         )
+
+
+class FirstManyRelatedModelTest(TestCase):
+    """
+    Test the behaviour of a many-to-many relationship.
+    """
+    def setUp(self):
+        self.obj = FirstManyRelatedModel.objects.create()
+        self.rel_obj = OtherManyRelatedModel.objects.create()
+
+    def test_related_add_from_first_side(self):
+        self.obj.related.add(self.rel_obj)
+        self.assertEqual(LogEntry.objects.get_for_objects(self.obj.related.all()).count(), self.rel_obj.history.count())
+        self.assertEqual(LogEntry.objects.get_for_objects(self.obj.related.all()).first(), self.rel_obj.history.first())
+        self.assertEqual(LogEntry.objects.count(), 1)
+
+    def test_related_add_from_other_side(self):
+        self.rel_obj.related.add(self.obj)
+        self.assertEqual(LogEntry.objects.get_for_objects(self.obj.related.all()).count(), self.rel_obj.history.count())
+        self.assertEqual(LogEntry.objects.get_for_objects(self.obj.related.all()).first(), self.rel_obj.history.first())
+        self.assertEqual(LogEntry.objects.count(), 1)
+
+    def test_related_remove_from_first_side(self):
+        self.obj.related.add(self.rel_obj)
+        self.obj.related.remove(self.rel_obj)
+        self.assertEqual(LogEntry.objects.count(), 2)
+
+    def test_related_remove_from_other_side(self):
+        self.rel_obj.related.add(self.obj)
+        self.rel_obj.related.remove(self.obj)
+        self.assertEqual(LogEntry.objects.count(), 2)
+
+    def test_related_clear_from_first_side(self):
+        self.obj.related.add(self.rel_obj)
+        self.obj.related.clear()
+        self.assertEqual(LogEntry.objects.count(), 2)
+
+    def test_related_clear_from_other_side(self):
+        self.rel_obj.related.add(self.obj)
+        self.rel_obj.related.clear()
+        self.assertEqual(LogEntry.objects.count(), 2)
 
 
 class MiddlewareTest(TestCase):

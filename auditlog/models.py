@@ -51,6 +51,7 @@ class LogEntryManager(models.Manager):
             # Delete log entries with the same pk as a newly created model. This should only be necessary when an pk is
             # used twice.
             if kwargs.get("action", None) is LogEntry.Action.CREATE:
+                # Don't delete many to many records related to this object
                 if (
                     kwargs.get("object_id", None) is not None
                     and self.filter(
@@ -75,6 +76,60 @@ class LogEntryManager(models.Manager):
                 else self.using(db).create(**kwargs)
             )
         return None
+
+    def log_m2m_changes(self, changed_queryset, instance, action, **kwargs):
+        """
+
+        Helper method to create a new log entry. This method automatically populates some fields when no explicit value
+        is given.
+
+        :param instance: The model instance to log a change for.
+        :type instance: Model
+        :param action: type of action.
+        :type instance: int LogEntry.ACTIONS choices
+        :param kwargs: Field overrides for the :py:class:`LogEntry` object.
+        :return: The new log entry or `None` if there were no changes.
+        :rtype: LogEntry
+        """
+
+        pk = self._get_pk_value(instance)
+        if changed_queryset is not None:
+            kwargs.setdefault('content_type', ContentType.objects.get_for_model(instance))
+            kwargs.setdefault('object_pk', pk)
+            kwargs.setdefault('object_repr', smart_str(instance))
+
+            if isinstance(pk, int):
+                kwargs.setdefault('object_id', pk)
+
+            get_additional_data = getattr(instance, 'get_additional_data', None)
+            if callable(get_additional_data):
+                kwargs.setdefault('additional_data', get_additional_data())
+
+            kwargs.setdefault('action', action)
+
+            instance_verbose_name = str(smart_str(instance._meta.verbose_name))
+
+            changes = self.get_objects_repr(changed_queryset)
+
+            if action == 3:
+                changes = {instance_verbose_name: ['Added', changes]}
+            elif action == 2:
+                changes = {instance_verbose_name: ['Removed', changes]}
+            else:
+                return None
+
+            kwargs['changes'] = json.dumps(changes)
+            db = instance._state.db
+            return self.create(**kwargs) if db is None or db == '' else self.using(db).create(**kwargs)
+
+        return None
+
+    def get_object_repr(self, instance):
+        pk = self._get_pk_value(instance)
+        return '{} - {}'.format(pk, smart_str(instance))
+
+    def get_objects_repr(self, queryset):
+        return [self.get_object_repr(ins) for ins in list(queryset)]
 
     def get_for_object(self, instance):
         """
@@ -192,11 +247,13 @@ class LogEntry(models.Model):
         CREATE = 0
         UPDATE = 1
         DELETE = 2
+        ADDED = 3
 
         choices = (
             (CREATE, _("create")),
             (UPDATE, _("update")),
             (DELETE, _("delete")),
+            (ADDED, _("added")),
         )
 
     content_type = models.ForeignKey(

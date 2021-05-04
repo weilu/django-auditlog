@@ -2,7 +2,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from django.db.models import Model
 from django.db.models.base import ModelBase
-from django.db.models.signals import ModelSignal, post_delete, post_save, pre_save
+from django.db.models.signals import ModelSignal, post_delete, post_save, pre_save, m2m_changed
 
 DispatchUID = Tuple[int, str, int]
 
@@ -17,9 +17,10 @@ class AuditlogModelRegistry(object):
         create: bool = True,
         update: bool = True,
         delete: bool = True,
+        m2m: bool = True,
         custom: Optional[Dict[ModelSignal, Callable]] = None,
     ):
-        from auditlog.receivers import log_create, log_delete, log_update
+        from auditlog.receivers import log_create, log_update, log_delete, log_m2m_changes
 
         self._registry = {}
         self._signals = {}
@@ -30,6 +31,8 @@ class AuditlogModelRegistry(object):
             self._signals[pre_save] = log_update
         if delete:
             self._signals[post_delete] = log_delete
+        if m2m:
+            self._signals[m2m_changed] = log_m2m_changes
 
         if custom is not None:
             self._signals.update(custom)
@@ -40,6 +43,7 @@ class AuditlogModelRegistry(object):
         include_fields: Optional[List[str]] = None,
         exclude_fields: Optional[List[str]] = None,
         mapping_fields: Optional[Dict[str, str]] = None,
+        m2m_fields: Optional[Dict[str, List[str]]] = None,
     ):
         """
         Register a model with auditlog. Auditlog will then track mutations on this model's instances.
@@ -48,7 +52,8 @@ class AuditlogModelRegistry(object):
         :param include_fields: The fields to include. Implicitly excludes all other fields.
         :param exclude_fields: The fields to exclude. Overrides the fields to include.
         :param mapping_fields: Mapping from field names to strings in diff.
-
+        :param m2m_fields: The fields to map as many to many.
+        :type m2m_fields: dict of key: list pairs, where key is the name of the m2m field, list is m2m signals, possible values: 'post_add', 'post_remove', 'post_clear'
         """
 
         if include_fields is None:
@@ -57,6 +62,8 @@ class AuditlogModelRegistry(object):
             exclude_fields = []
         if mapping_fields is None:
             mapping_fields = {}
+        if m2m_fields is None:
+            m2m_fields = {}
 
         def registrar(cls):
             """Register models for a given class."""
@@ -67,6 +74,7 @@ class AuditlogModelRegistry(object):
                 "include_fields": include_fields,
                 "exclude_fields": exclude_fields,
                 "mapping_fields": mapping_fields,
+                'm2m_fields': m2m_fields,
             }
             self._connect_signals(cls)
 
@@ -122,9 +130,28 @@ class AuditlogModelRegistry(object):
         """
         for signal in self._signals:
             receiver = self._signals[signal]
-            signal.connect(
-                receiver, sender=model, dispatch_uid=self._dispatch_uid(signal, model)
-            )
+
+            if signal is m2m_changed:
+                # Connect Many to many signals
+                for m2m_field, m2m_signals in self._registry[model]['m2m_fields'].items():
+                    assert isinstance(m2m_signals, list)
+                    if m2m_signals == []:
+                        m2m_signals = 'post_add', 'post_remove', 'post_clear'
+
+                    field = getattr(model, m2m_field)
+                    m2m_model = getattr(field, 'through')
+                    if 'post_save' in m2m_signals:
+                        post_save_receiver = self._signals[post_save]
+                        post_save.connect(post_save_receiver, sender=m2m_model, dispatch_uid=self._dispatch_uid(m2m_model, model))
+
+                    if 'pre_save' in m2m_signals:
+                        pre_save_receiver = self._signals[pre_save]
+                        pre_save.connect(pre_save_receiver, sender=m2m_model, dispatch_uid=self._dispatch_uid(m2m_model, model))
+
+                    setattr(m2m_model, '_map_signals', m2m_signals)
+                    signal.connect(receiver, sender=m2m_model, dispatch_uid=self._dispatch_uid(signal, m2m_model))
+            else:
+                signal.connect(receiver, sender=model, dispatch_uid=self._dispatch_uid(signal, model))
 
     def _disconnect_signals(self, model):
         """

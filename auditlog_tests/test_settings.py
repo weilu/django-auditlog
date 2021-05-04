@@ -30,10 +30,6 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": os.getenv("TEST_DB_NAME", "auditlog_tests_db"),
-        "USER": os.getenv("TEST_DB_USER", "postgres"),
-        "PASSWORD": os.getenv("TEST_DB_PASS", ""),
-        "HOST": os.getenv("TEST_DB_HOST", "127.0.0.1"),
-        "PORT": os.getenv("TEST_DB_PORT", "5432"),
     }
 }
 

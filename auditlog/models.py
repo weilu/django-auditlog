@@ -108,8 +108,10 @@ class LogEntryManager(models.Manager):
             kwargs.setdefault('action', action)
 
             instance_verbose_name = str(smart_str(instance._meta.verbose_name))
+            print('m2m instance ====>', instance)
 
             changes = self.get_objects_repr(changed_queryset)
+            print('m2m changes queryset ====>', changes)
 
             if action == 3:
                 changes = {instance_verbose_name: ['Added', changes]}
@@ -124,12 +126,8 @@ class LogEntryManager(models.Manager):
 
         return None
 
-    def get_object_repr(self, instance):
-        pk = self._get_pk_value(instance)
-        return '{} - {}'.format(pk, smart_str(instance))
-
     def get_objects_repr(self, queryset):
-        return [self.get_object_repr(ins) for ins in list(queryset)]
+        return [smart_str(ins) for ins in list(queryset)]
 
     def get_for_object(self, instance):
         """

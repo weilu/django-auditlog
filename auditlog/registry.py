@@ -148,7 +148,7 @@ class AuditlogModelRegistry(object):
                         pre_save_receiver = self._signals[pre_save]
                         pre_save.connect(pre_save_receiver, sender=m2m_model, dispatch_uid=self._dispatch_uid(m2m_model, model))
 
-                    setattr(m2m_model, '_map_signals', m2m_signals)
+                    setattr(m2m_model, '_map_signals', (m2m_field, m2m_signals))
                     signal.connect(receiver, sender=m2m_model, dispatch_uid=self._dispatch_uid(signal, m2m_model))
             else:
                 signal.connect(receiver, sender=model, dispatch_uid=self._dispatch_uid(signal, model))

@@ -77,7 +77,7 @@ class LogEntryManager(models.Manager):
             )
         return None
 
-    def log_m2m_changes(self, changed_queryset, instance, action, **kwargs):
+    def log_m2m_changes(self, changed_queryset, instance, action, field_name, **kwargs):
         """
 
         Helper method to create a new log entry. This method automatically populates some fields when no explicit value
@@ -107,16 +107,12 @@ class LogEntryManager(models.Manager):
 
             kwargs.setdefault('action', action)
 
-            instance_verbose_name = str(smart_str(instance._meta.verbose_name))
-            print('m2m instance ====>', instance)
-
             changes = self.get_objects_repr(changed_queryset)
-            print('m2m changes queryset ====>', changes)
 
             if action == 3:
-                changes = {instance_verbose_name: ['Added', changes]}
+                changes = {field_name: {'Added': changes}}
             elif action == 2:
-                changes = {instance_verbose_name: ['Removed', changes]}
+                changes = {field_name: {'Removed': changes}}
             else:
                 return None
 
@@ -332,13 +328,23 @@ class LogEntry(models.Model):
         substrings = []
 
         for field, values in self.changes_dict.items():
-            substring = "{field_name:s}{colon:s}{old:s}{arrow:s}{new:s}".format(
-                field_name=field,
-                colon=colon,
-                old=values[0],
-                arrow=arrow,
-                new=values[1],
-            )
+            if type(values) == dict:
+                action_str = list(values.keys())[0]
+                val_str = ', '.join(list(values.values())[0])
+                substring = "{field_name:s}{colon:s}{action:s} {vals:s}".format(
+                    field_name=field,
+                    colon=colon,
+                    action=action_str,
+                    vals=val_str,
+                )
+            else:
+                substring = "{field_name:s}{colon:s}{old:s}{arrow:s}{new:s}".format(
+                    field_name=field,
+                    colon=colon,
+                    old=values[0],
+                    arrow=arrow,
+                    new=values[1],
+                )
             substrings.append(substring)
 
         return separator.join(substrings)

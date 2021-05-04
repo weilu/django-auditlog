@@ -66,7 +66,7 @@ def log_m2m_changes(signal, action, **kwargs):
     m2m changes signal, used to log all changes to m2m relationships, used with m2m_changed.connect
 
     """
-    m2m_signals = kwargs['sender']._map_signals
+    m2m_field_name, m2m_signals = kwargs['sender']._map_signals
     if action in m2m_signals:
         if action == 'post_clear':
             changed_queryset = kwargs['model'].objects.all()
@@ -79,16 +79,19 @@ def log_m2m_changes(signal, action, **kwargs):
                     changed_queryset,
                     kwargs['instance'],
                     LogEntry.Action.ADDED,
+                    m2m_field_name,
                 )
             elif action == 'post_remove':
                 LogEntry.objects.log_m2m_changes(
                     changed_queryset,
                     kwargs['instance'],
                     LogEntry.Action.DELETE,
+                    m2m_field_name,
                 )
             elif action == 'post_clear':
                 LogEntry.objects.log_m2m_changes(
                     changed_queryset,
                     kwargs['instance'],
                     LogEntry.Action.DELETE,
+                    m2m_field_name,
                 )

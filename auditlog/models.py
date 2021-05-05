@@ -6,7 +6,7 @@ from dateutil.tz import gettz
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericRelation
 from django.contrib.contenttypes.models import ContentType
-from django.core.exceptions import FieldDoesNotExist
+from django.core.exceptions import FieldDoesNotExist, ObjectDoesNotExist
 from django.db import DEFAULT_DB_ALIAS, models
 from django.db.models import Field, Q, QuerySet
 from django.utils import formats, timezone
@@ -39,7 +39,10 @@ class LogEntryManager(models.Manager):
                 "content_type", ContentType.objects.get_for_model(instance)
             )
             kwargs.setdefault("object_pk", pk)
-            kwargs.setdefault("object_repr", smart_str(instance))
+            try:
+                kwargs.setdefault("object_repr", smart_str(instance))
+            except ObjectDoesNotExist: # fixture loading: https://github.com/jazzband/django-auditlog/issues/8
+                kwargs.setdefault("object_repr", smart_str(None))
 
             if isinstance(pk, int):
                 kwargs.setdefault("object_id", pk)
@@ -96,7 +99,10 @@ class LogEntryManager(models.Manager):
         if changed_queryset is not None:
             kwargs.setdefault('content_type', ContentType.objects.get_for_model(instance))
             kwargs.setdefault('object_pk', pk)
-            kwargs.setdefault('object_repr', smart_str(instance))
+            try:
+                kwargs.setdefault('object_repr', smart_str(instance))
+            except ObjectDoesNotExist:
+                kwargs.setdefault("object_repr", smart_str(None))
 
             if isinstance(pk, int):
                 kwargs.setdefault('object_id', pk)

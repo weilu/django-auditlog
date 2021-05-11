@@ -320,7 +320,7 @@ class LogEntry(models.Model):
             return {}
 
     @property
-    def changes_str(self, colon=": ", arrow=" \u2192 ", separator="; "):
+    def changes_str(self, colon=": ", arrow=" \u2192 ", separator=";\n "):
         """
         Return the changes recorded in this log entry as a string. The formatting of the string can be customized by
         setting alternate values for colon, arrow and separator. If the formatting is still not satisfying, please use
@@ -333,8 +333,8 @@ class LogEntry(models.Model):
         """
         substrings = []
 
-        for field, values in self.changes_dict.items():
-            if type(values) == dict:
+        for field, values in self.changes_display_dict.items():
+            if type(values) == dict: #m2m
                 action_str = list(values.keys())[0]
                 val_str = ', '.join(list(values.values())[0])
                 substring = "{field_name:s}{colon:s}{action:s} {vals:s}".format(
@@ -366,8 +366,9 @@ class LogEntry(models.Model):
         model = self.content_type.model_class()
         model_fields = auditlog.get_model_fields(model._meta.model)
         changes_display_dict = {}
+        changes_dict = self.changes_dict or {}
         # grab the changes_dict and iterate through
-        for field_name, values in self.changes_dict.items():
+        for field_name, values in changes_dict.items():
             # try to get the field attribute on the model
             try:
                 field = model._meta.get_field(field_name)
@@ -432,6 +433,8 @@ class LogEntry(models.Model):
             verbose_name = model_fields["mapping_fields"].get(
                 field.name, getattr(field, "verbose_name", field.name)
             )
+            if type(values) == dict: #m2m
+                values_display = values
             changes_display_dict[verbose_name] = values_display
         return changes_display_dict
 

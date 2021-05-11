@@ -6,7 +6,6 @@ from django.db import models
 from auditlog.models import AuditlogHistoryField
 from auditlog.registry import auditlog, AuditlogModelRegistry
 
-m2m_only_auditlog = AuditlogModelRegistry(create=False, update=False, delete=False)
 
 @auditlog.register()
 class SimpleModel(models.Model):
@@ -97,6 +96,9 @@ class OtherManyRelatedModel(models.Model):
     """
 
     history = AuditlogHistoryField()
+
+    def __str__(self):
+        return f'{self.id}'
 
 
 @auditlog.register(include_fields=['label'])
@@ -245,7 +247,7 @@ auditlog.register(ManyRelatedModel)
 auditlog.register(ManyRelatedModel.related.through)
 auditlog.register(SimpleExcludeModel, exclude_fields=["text"])
 auditlog.register(SimpleMappingModel, mapping_fields={"sku": "Product No."})
-m2m_only_auditlog.register(FirstManyRelatedModel, include_fields=['pk', 'history'], m2m_fields={'related': []})
+auditlog.register(FirstManyRelatedModel, include_fields=['pk', 'history'], m2m_fields={'related': []})
 auditlog.register(AdditionalDataIncludedModel)
 auditlog.register(DateTimeFieldModel)
 auditlog.register(ChoicesFieldModel)

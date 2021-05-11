@@ -172,36 +172,58 @@ class FirstManyRelatedModelTest(TestCase):
         self.rel_obj = OtherManyRelatedModel.objects.create()
 
     def test_related_add_from_first_side(self):
+        count_before = LogEntry.objects.count()
         self.obj.related.add(self.rel_obj)
         self.assertEqual(LogEntry.objects.get_for_objects(self.obj.related.all()).count(), self.rel_obj.history.count())
         self.assertEqual(LogEntry.objects.get_for_objects(self.obj.related.all()).first(), self.rel_obj.history.first())
-        self.assertEqual(LogEntry.objects.count(), 1)
+        self.assertEqual(LogEntry.objects.count(), count_before + 1)
 
     def test_related_add_from_other_side(self):
+        count_before = LogEntry.objects.count()
         self.rel_obj.related.add(self.obj)
         self.assertEqual(LogEntry.objects.get_for_objects(self.obj.related.all()).count(), self.rel_obj.history.count())
         self.assertEqual(LogEntry.objects.get_for_objects(self.obj.related.all()).first(), self.rel_obj.history.first())
-        self.assertEqual(LogEntry.objects.count(), 1)
+        self.assertEqual(LogEntry.objects.count(), count_before + 1)
 
     def test_related_remove_from_first_side(self):
+        count_before = LogEntry.objects.count()
         self.obj.related.add(self.rel_obj)
         self.obj.related.remove(self.rel_obj)
-        self.assertEqual(LogEntry.objects.count(), 2)
+        self.assertEqual(LogEntry.objects.count(), count_before + 2)
 
     def test_related_remove_from_other_side(self):
+        count_before = LogEntry.objects.count()
         self.rel_obj.related.add(self.obj)
         self.rel_obj.related.remove(self.obj)
-        self.assertEqual(LogEntry.objects.count(), 2)
+        self.assertEqual(LogEntry.objects.count(), count_before + 2)
 
     def test_related_clear_from_first_side(self):
+        count_before = LogEntry.objects.count()
         self.obj.related.add(self.rel_obj)
         self.obj.related.clear()
-        self.assertEqual(LogEntry.objects.count(), 2)
+        self.assertEqual(LogEntry.objects.count(), count_before + 2)
 
     def test_related_clear_from_other_side(self):
+        count_before = LogEntry.objects.count()
         self.rel_obj.related.add(self.obj)
         self.rel_obj.related.clear()
-        self.assertEqual(LogEntry.objects.count(), 2)
+        self.assertEqual(LogEntry.objects.count(), count_before + 2)
+
+    def test_changes_str(self):
+        self.obj.related.add(self.rel_obj)
+        self.obj.related.clear()
+        entries = LogEntry.objects.get_for_object(self.obj).all()
+        for entry in entries:
+            if entry.action == 2:
+                self.assertTrue('Removed' in entry.changes_display_dict['related'])
+                self.assertEqual(entry.changes_str, 'related: Removed 1')
+            elif entry.action == 3:
+                self.assertTrue('Added' in entry.changes_display_dict['related'])
+                self.assertEqual(entry.changes_str, 'related: Added 1')
+            else:
+                # at least no error for any other case
+                entry.changes_display_dict
+                entry.changes_str
 
 
 class MiddlewareTest(TestCase):

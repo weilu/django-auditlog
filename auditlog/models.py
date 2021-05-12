@@ -319,7 +319,7 @@ class LogEntry(models.Model):
         except ValueError:
             return {}
 
-    def get_changes_str(self, colon=": ", arrow=" \u2192 ", separator="; ", exclude_fields=[]):
+    def get_changes_str(self, colon=": ", arrow=" \u2192 ", separator="; "):
         """
         Return the changes recorded in this log entry as a string. The formatting of the string can be customized by
         setting alternate values for colon, arrow and separator. If the formatting is still not satisfying, please use
@@ -332,9 +332,8 @@ class LogEntry(models.Model):
         """
         substrings = []
 
-        for field, values in self.changes_display_dict.items():
-            if field in exclude_fields:
-                continue
+        changes_dict = self.changes_dict or {}
+        for field, values in changes_dict.items():
             if type(values) == dict: #m2m
                 action_str = list(values.keys())[0]
                 val_str = ', '.join(list(values.values())[0])

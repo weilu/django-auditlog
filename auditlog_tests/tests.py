@@ -217,8 +217,6 @@ class FirstManyRelatedModelTest(TestCase):
             if entry.action == 2:
                 self.assertTrue('Removed' in entry.changes_display_dict['related'])
                 self.assertEqual(entry.changes_str, 'related: Removed 1')
-                excluded_changes_str = entry.get_changes_str(exclude_fields=['related'])
-                self.assertEqual(excluded_changes_str, '')
             elif entry.action == 3:
                 self.assertTrue('Added' in entry.changes_display_dict['related'])
                 self.assertEqual(entry.changes_str, 'related: Added 1')

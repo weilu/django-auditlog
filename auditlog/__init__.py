@@ -1,9 +1,3 @@
-from pkg_resources import DistributionNotFound, get_distribution
+from importlib.metadata import version
 
-try:
-    __version__ = get_distribution("django-auditlog").version
-except DistributionNotFound:
-    # package is not installed
-    pass
-
-default_app_config = "auditlog.apps.AuditlogConfig"
+__version__ = version("django-auditlog")

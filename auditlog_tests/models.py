@@ -1,10 +1,13 @@
 import uuid
 
 from django.contrib.postgres.fields import ArrayField
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 
 from auditlog.models import AuditlogHistoryField
-from auditlog.registry import auditlog, AuditlogModelRegistry
+from auditlog.registry import AuditlogModelRegistry, auditlog
+
+m2m_only_auditlog = AuditlogModelRegistry(create=False, update=False, delete=False)
 
 
 @auditlog.register()
@@ -18,7 +21,10 @@ class SimpleModel(models.Model):
     integer = models.IntegerField(blank=True, null=True)
     datetime = models.DateTimeField(auto_now=True)
 
-    history = AuditlogHistoryField()
+    history = AuditlogHistoryField(delete_related=True)
+
+    def __str__(self):
+        return str(self.text)
 
 
 class AltPrimaryKeyModel(models.Model):
@@ -33,7 +39,7 @@ class AltPrimaryKeyModel(models.Model):
     integer = models.IntegerField(blank=True, null=True)
     datetime = models.DateTimeField(auto_now=True)
 
-    history = AuditlogHistoryField(pk_indexable=False)
+    history = AuditlogHistoryField(delete_related=True, pk_indexable=False)
 
 
 class UUIDPrimaryKeyModel(models.Model):
@@ -48,7 +54,27 @@ class UUIDPrimaryKeyModel(models.Model):
     integer = models.IntegerField(blank=True, null=True)
     datetime = models.DateTimeField(auto_now=True)
 
-    history = AuditlogHistoryField(pk_indexable=False)
+    history = AuditlogHistoryField(delete_related=True, pk_indexable=False)
+
+
+class ModelPrimaryKeyModel(models.Model):
+    """
+    A model with another model as primary key.
+    """
+
+    key = models.OneToOneField(
+        "SimpleModel",
+        primary_key=True,
+        on_delete=models.CASCADE,
+        related_name="reverse_primary_key",
+    )
+
+    text = models.TextField(blank=True)
+    boolean = models.BooleanField(default=False)
+    integer = models.IntegerField(blank=True, null=True)
+    datetime = models.DateTimeField(auto_now=True)
+
+    history = AuditlogHistoryField(delete_related=True, pk_indexable=False)
 
 
 class ProxyModel(SimpleModel):
@@ -60,24 +86,106 @@ class ProxyModel(SimpleModel):
         proxy = True
 
 
-class RelatedModel(models.Model):
+class RelatedModelParent(models.Model):
+    """
+    Use multi table inheritance to make a OneToOneRel field
+    """
+
+
+class RelatedModel(RelatedModelParent):
     """
     A model with a foreign key.
     """
 
-    related = models.ForeignKey(to="self", on_delete=models.CASCADE)
+    related = models.ForeignKey(
+        "SimpleModel", related_name="related_models", on_delete=models.CASCADE
+    )
+    one_to_one = models.OneToOneField(
+        to="SimpleModel", on_delete=models.CASCADE, related_name="reverse_one_to_one"
+    )
 
-    history = AuditlogHistoryField()
+    history = AuditlogHistoryField(delete_related=True)
+
+    def __str__(self):
+        return f"RelatedModel #{self.pk} -> {self.related.id}"
 
 
 class ManyRelatedModel(models.Model):
     """
-    A model with a many to many relation.
+    A model with many-to-many relations.
     """
 
-    related = models.ManyToManyField("self")
+    recursive = models.ManyToManyField("self")
+    related = models.ManyToManyField("ManyRelatedOtherModel", related_name="related")
 
-    history = AuditlogHistoryField()
+    history = AuditlogHistoryField(delete_related=True)
+
+    def get_additional_data(self):
+        related = self.related.first()
+        return {"related_model_id": related.id if related else None}
+
+
+class ManyRelatedOtherModel(models.Model):
+    """
+    A model related to ManyRelatedModel as many-to-many.
+    """
+
+    history = AuditlogHistoryField(delete_related=True)
+
+
+class ReusableThroughRelatedModel(models.Model):
+    """
+    A model related to multiple other models through a model.
+    """
+
+    label = models.CharField(max_length=100)
+
+
+class ReusableThroughModel(models.Model):
+    """
+    A through model that can be associated multiple different models.
+    """
+
+    label = models.ForeignKey(
+        ReusableThroughRelatedModel,
+        on_delete=models.CASCADE,
+        related_name="%(app_label)s_%(class)s_items",
+    )
+    one = models.ForeignKey(
+        "ModelForReusableThroughModel", on_delete=models.CASCADE, null=True, blank=True
+    )
+    two = models.ForeignKey(
+        "OtherModelForReusableThroughModel",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+    )
+
+
+class ModelForReusableThroughModel(models.Model):
+    """
+    A model with many-to-many relations through a shared model.
+    """
+
+    name = models.CharField(max_length=200)
+    related = models.ManyToManyField(
+        ReusableThroughRelatedModel, through=ReusableThroughModel
+    )
+
+    history = AuditlogHistoryField(delete_related=True)
+
+
+class OtherModelForReusableThroughModel(models.Model):
+    """
+    Another model with many-to-many relations through a shared model.
+    """
+
+    name = models.CharField(max_length=200)
+    related = models.ManyToManyField(
+        ReusableThroughRelatedModel, through=ReusableThroughModel
+    )
+
+    history = AuditlogHistoryField(delete_related=True)
 
 
 class FirstManyRelatedModel(models.Model):
@@ -110,7 +218,7 @@ class SimpleIncludeModel(models.Model):
     label = models.CharField(max_length=100)
     text = models.TextField(blank=True)
 
-    history = AuditlogHistoryField()
+    history = AuditlogHistoryField(delete_related=True)
 
 
 class SimpleExcludeModel(models.Model):
@@ -121,7 +229,7 @@ class SimpleExcludeModel(models.Model):
     label = models.CharField(max_length=100)
     text = models.TextField(blank=True)
 
-    history = AuditlogHistoryField()
+    history = AuditlogHistoryField(delete_related=True)
 
 
 class SimpleMappingModel(models.Model):
@@ -133,7 +241,19 @@ class SimpleMappingModel(models.Model):
     vtxt = models.CharField(verbose_name="Version", max_length=100)
     not_mapped = models.CharField(max_length=100)
 
-    history = AuditlogHistoryField()
+    history = AuditlogHistoryField(delete_related=True)
+
+
+@auditlog.register(mask_fields=["address"])
+class SimpleMaskedModel(models.Model):
+    """
+    A simple model used for register's mask_fields kwarg
+    """
+
+    address = models.CharField(max_length=100)
+    text = models.TextField()
+
+    history = AuditlogHistoryField(delete_related=True)
 
 
 class AdditionalDataIncludedModel(models.Model):
@@ -146,7 +266,7 @@ class AdditionalDataIncludedModel(models.Model):
     text = models.TextField(blank=True)
     related = models.ForeignKey(to=SimpleModel, on_delete=models.CASCADE)
 
-    history = AuditlogHistoryField()
+    history = AuditlogHistoryField(delete_related=True)
 
     def get_additional_data(self):
         """
@@ -173,7 +293,7 @@ class DateTimeFieldModel(models.Model):
     time = models.TimeField()
     naive_dt = models.DateTimeField(null=True, blank=True)
 
-    history = AuditlogHistoryField()
+    history = AuditlogHistoryField(delete_related=True)
 
 
 class ChoicesFieldModel(models.Model):
@@ -195,7 +315,7 @@ class ChoicesFieldModel(models.Model):
     status = models.CharField(max_length=1, choices=STATUS_CHOICES)
     multiplechoice = models.CharField(max_length=255, choices=STATUS_CHOICES)
 
-    history = AuditlogHistoryField()
+    history = AuditlogHistoryField(delete_related=True)
 
 
 class CharfieldTextfieldModel(models.Model):
@@ -208,7 +328,7 @@ class CharfieldTextfieldModel(models.Model):
     longchar = models.CharField(max_length=255)
     longtextfield = models.TextField()
 
-    history = AuditlogHistoryField()
+    history = AuditlogHistoryField(delete_related=True)
 
 
 class PostgresArrayFieldModel(models.Model):
@@ -230,7 +350,7 @@ class PostgresArrayFieldModel(models.Model):
         models.CharField(max_length=1, choices=STATUS_CHOICES), size=3
     )
 
-    history = AuditlogHistoryField()
+    history = AuditlogHistoryField(delete_related=True)
 
 
 class NoDeleteHistoryModel(models.Model):
@@ -239,12 +359,89 @@ class NoDeleteHistoryModel(models.Model):
     history = AuditlogHistoryField(delete_related=False)
 
 
+class JSONModel(models.Model):
+    json = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
+
+    history = AuditlogHistoryField(delete_related=False)
+
+
+class NullableJSONModel(models.Model):
+    json = models.JSONField(null=True, blank=True)
+
+    history = AuditlogHistoryField(delete_related=False)
+
+
+class SerializeThisModel(models.Model):
+    label = models.CharField(max_length=24, unique=True)
+    timestamp = models.DateTimeField()
+    nullable = models.IntegerField(null=True)
+    nested = models.JSONField()
+    mask_me = models.CharField(max_length=255, null=True)
+    code = models.UUIDField(null=True)
+    date = models.DateField(null=True)
+
+    history = AuditlogHistoryField(delete_related=False)
+
+    def natural_key(self):
+        return self.label
+
+
+class SerializeOnlySomeOfThisModel(models.Model):
+    this = models.CharField(max_length=24)
+    not_this = models.CharField(max_length=24)
+
+    history = AuditlogHistoryField(delete_related=False)
+
+
+class SerializePrimaryKeyRelatedModel(models.Model):
+    serialize_this = models.ForeignKey(to=SerializeThisModel, on_delete=models.CASCADE)
+    subheading = models.CharField(max_length=255)
+    value = models.IntegerField()
+
+    history = AuditlogHistoryField(delete_related=False)
+
+
+class SerializeNaturalKeyRelatedModel(models.Model):
+    serialize_this = models.ForeignKey(to=SerializeThisModel, on_delete=models.CASCADE)
+    subheading = models.CharField(max_length=255)
+    value = models.IntegerField()
+
+    history = AuditlogHistoryField(delete_related=False)
+
+
+class SimpleNonManagedModel(models.Model):
+    """
+    A simple model with no special things going on.
+    """
+
+    text = models.TextField(blank=True)
+    boolean = models.BooleanField(default=False)
+    integer = models.IntegerField(blank=True, null=True)
+    datetime = models.DateTimeField(auto_now=True)
+
+    history = AuditlogHistoryField(delete_related=True)
+
+    def __str__(self):
+        return self.text
+
+    class Meta:
+        managed = False
+
+
+class AutoManyRelatedModel(models.Model):
+    related = models.ManyToManyField(SimpleModel)
+
+
 auditlog.register(AltPrimaryKeyModel)
 auditlog.register(UUIDPrimaryKeyModel)
+auditlog.register(ModelPrimaryKeyModel)
 auditlog.register(ProxyModel)
 auditlog.register(RelatedModel)
 auditlog.register(ManyRelatedModel)
-auditlog.register(ManyRelatedModel.related.through)
+auditlog.register(ManyRelatedModel.recursive.through)
+m2m_only_auditlog.register(ManyRelatedModel, m2m_fields={"related"})
+m2m_only_auditlog.register(ModelForReusableThroughModel, m2m_fields={"related"})
+m2m_only_auditlog.register(OtherModelForReusableThroughModel, m2m_fields={"related"})
 auditlog.register(SimpleExcludeModel, exclude_fields=["text"])
 auditlog.register(SimpleMappingModel, mapping_fields={"sku": "Product No."})
 auditlog.register(FirstManyRelatedModel, include_fields=['pk', 'history'], m2m_fields={'related': []})
@@ -254,4 +451,22 @@ auditlog.register(ChoicesFieldModel)
 auditlog.register(CharfieldTextfieldModel)
 auditlog.register(PostgresArrayFieldModel)
 auditlog.register(NoDeleteHistoryModel)
-
+auditlog.register(JSONModel)
+auditlog.register(NullableJSONModel)
+auditlog.register(
+    SerializeThisModel,
+    serialize_data=True,
+    mask_fields=["mask_me"],
+)
+auditlog.register(
+    SerializeOnlySomeOfThisModel,
+    serialize_data=True,
+    serialize_auditlog_fields_only=True,
+    exclude_fields=["not_this"],
+)
+auditlog.register(SerializePrimaryKeyRelatedModel, serialize_data=True)
+auditlog.register(
+    SerializeNaturalKeyRelatedModel,
+    serialize_data=True,
+    serialize_kwargs={"use_natural_foreign_keys": True},
+)

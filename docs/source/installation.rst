@@ -11,10 +11,10 @@ The repository can be found at https://github.com/jazzband/django-auditlog/.
 
 **Requirements**
 
-- Python 3.5 or higher
-- Django 2.2 or higher
+- Python 3.9 or higher
+- Django 4.2, 5.0 and 5.1
 
-Auditlog is currently tested with Python 3.5 - 3.8 and Django 2.2, 3.0 and 3.1. The latest test report can be found
+Auditlog is currently tested with Python 3.9+ and Django 4.2, 5.0 and 5.1. The latest test report can be found
 at https://github.com/jazzband/django-auditlog/actions.
 
 Adding Auditlog to your Django application
@@ -24,5 +24,5 @@ To use Auditlog in your application, just add ``'auditlog'`` to your project's `
 ``manage.py migrate`` to create/upgrade the necessary database structure.
 
 If you want Auditlog to automatically set the actor for log entries you also need to enable the middleware by adding
-``'auditlog.middleware.AuditlogMiddleware'`` to your ``MIDDLEWARE_CLASSES`` setting. Please check :doc:`usage` for more
+``'auditlog.middleware.AuditlogMiddleware'`` to your ``MIDDLEWARE`` setting. Please check :doc:`usage` for more
 information.

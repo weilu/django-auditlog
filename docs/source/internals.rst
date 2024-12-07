@@ -19,11 +19,29 @@ Middleware
 .. automodule:: auditlog.middleware
     :members: AuditlogMiddleware
 
+Correlation ID
+--------------
+
+.. automodule:: auditlog.cid
+    :members: get_cid, set_cid
+
 Signal receivers
 ----------------
 
 .. automodule:: auditlog.receivers
     :members:
+
+Custom Signals
+--------------
+Django Auditlog provides two custom signals that will hook in before
+and after any Auditlog record is written from a ``create``, ``update``,
+``delete``, or ``accessed`` action on an audited model.
+
+.. automodule:: auditlog.signals
+    :members:
+    :member-order: bysource
+
+.. versionadded:: 3.0.0
 
 Calculating changes
 -------------------

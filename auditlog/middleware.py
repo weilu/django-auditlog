@@ -1,97 +1,67 @@
-import threading
-import time
-from functools import partial
+from typing import Optional
 
-from django.apps import apps
 from django.conf import settings
-from django.db.models.signals import pre_save
-from django.utils.deprecation import MiddlewareMixin
+from django.contrib.auth import get_user_model
 
-from auditlog.models import LogEntry
-
-threadlocal = threading.local()
+from auditlog.cid import set_cid
+from auditlog.context import set_actor
 
 
-class AuditlogMiddleware(MiddlewareMixin):
+class AuditlogMiddleware:
     """
-    Middleware to couple the request's user to log items. This is accomplished by currying the signal receiver with the
-    user from the request (or None if the user is not authenticated).
+    Middleware to couple the request's user to log items. This is accomplished by currying the
+    signal receiver with the user from the request (or None if the user is not authenticated).
     """
 
-    def process_request(self, request):
-        """
-        Gets the current user from the request and prepares and connects a signal receiver with the user already
-        attached to it.
-        """
-        # Initialize thread local storage
-        threadlocal.auditlog = {
-            "signal_duid": (self.__class__, time.time()),
-            "remote_addr": request.META.get("REMOTE_ADDR"),
-        }
-
-        # In case of proxy, set 'original' address
-        if request.META.get("HTTP_X_FORWARDED_FOR"):
-            threadlocal.auditlog["remote_addr"] = request.META.get(
-                "HTTP_X_FORWARDED_FOR"
-            ).split(",")[0]
-
-        # Connect signal for automatic logging
-        if hasattr(request, "user") and getattr(
-            request.user, "is_authenticated", False
-        ):
-            set_actor = partial(
-                self.set_actor,
-                user=request.user,
-                signal_duid=threadlocal.auditlog["signal_duid"],
-            )
-            pre_save.connect(
-                set_actor,
-                sender=LogEntry,
-                dispatch_uid=threadlocal.auditlog["signal_duid"],
-                weak=False,
-            )
-
-    def process_response(self, request, response):
-        """
-        Disconnects the signal receiver to prevent it from staying active.
-        """
-        if hasattr(threadlocal, "auditlog"):
-            pre_save.disconnect(
-                sender=LogEntry, dispatch_uid=threadlocal.auditlog["signal_duid"]
-            )
-
-        return response
-
-    def process_exception(self, request, exception):
-        """
-        Disconnects the signal receiver to prevent it from staying active in case of an exception.
-        """
-        if hasattr(threadlocal, "auditlog"):
-            pre_save.disconnect(
-                sender=LogEntry, dispatch_uid=threadlocal.auditlog["signal_duid"]
-            )
-
-        return None
+    def __init__(self, get_response=None):
+        self.get_response = get_response
+        if not isinstance(settings.AUDITLOG_DISABLE_REMOTE_ADDR, bool):
+            raise TypeError("Setting 'AUDITLOG_DISABLE_REMOTE_ADDR' must be a boolean")
 
     @staticmethod
-    def set_actor(user, sender, instance, signal_duid, **kwargs):
-        """
-        Signal receiver with an extra, required 'user' kwarg. This method becomes a real (valid) signal receiver when
-        it is curried with the actor.
-        """
-        if hasattr(threadlocal, "auditlog"):
-            if signal_duid != threadlocal.auditlog["signal_duid"]:
-                return
-            try:
-                app_label, model_name = settings.AUTH_USER_MODEL.split(".")
-                auth_user_model = apps.get_model(app_label, model_name)
-            except ValueError:
-                auth_user_model = apps.get_model("auth", "user")
-            if (
-                sender == LogEntry
-                and isinstance(user, auth_user_model)
-                and instance.actor is None
-            ):
-                instance.actor = user
+    def _get_remote_addr(request):
+        if settings.AUDITLOG_DISABLE_REMOTE_ADDR:
+            return None
 
-            instance.remote_addr = threadlocal.auditlog["remote_addr"]
+        # In case there is no proxy, return the original address
+        if not request.headers.get("X-Forwarded-For"):
+            return request.META.get("REMOTE_ADDR")
+
+        # In case of proxy, set 'original' address
+        remote_addr: str = request.headers.get("X-Forwarded-For").split(",")[0]
+
+        # Remove port number from remote_addr
+        if "." in remote_addr and ":" in remote_addr:  # IPv4 with port (`x.x.x.x:x`)
+            remote_addr = remote_addr.split(":")[0]
+        elif "[" in remote_addr:  # IPv6 with port (`[:::]:x`)
+            remote_addr = remote_addr[1:].split("]")[0]
+
+        return remote_addr
+
+    @staticmethod
+    def _get_remote_port(request) -> Optional[int]:
+        remote_port = request.headers.get("X-Forwarded-Port", "")
+
+        try:
+            remote_port = int(remote_port)
+        except ValueError:
+            remote_port = None
+
+        return remote_port
+
+    @staticmethod
+    def _get_actor(request):
+        user = getattr(request, "user", None)
+        if isinstance(user, get_user_model()) and user.is_authenticated:
+            return user
+        return None
+
+    def __call__(self, request):
+        remote_addr = self._get_remote_addr(request)
+        remote_port = self._get_remote_port(request)
+        user = self._get_actor(request)
+
+        set_cid(request)
+
+        with set_actor(actor=user, remote_addr=remote_addr, remote_port=remote_port):
+            return self.get_response(request)

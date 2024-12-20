@@ -349,7 +349,7 @@ class LogEntry(models.Model):
         blank=True, db_index=True, null=True, verbose_name=_("object id")
     )
     object_repr = models.TextField(verbose_name=_("object representation"))
-    serialized_data = models.JSONField(null=True)
+    serialized_data = models.JSONField(null=True, blank=True)
     action = models.PositiveSmallIntegerField(
         choices=Action.choices, verbose_name=_("action"), db_index=True
     )

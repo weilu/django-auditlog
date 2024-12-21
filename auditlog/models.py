@@ -412,8 +412,7 @@ class LogEntry(models.Model):
         """
         return changes_func(self)
 
-    @property
-    def changes_str(self, colon=": ", arrow=" \u2192 ", separator="; "):
+    def get_changes_str(self, colon=": ", arrow=" \u2192 ", separator="; "):
         """
         Return the changes recorded in this log entry as a string. The formatting of the string can be
         customized by setting alternate values for colon, arrow and separator. If the formatting is still
@@ -427,16 +426,28 @@ class LogEntry(models.Model):
         substrings = []
 
         for field, values in self.changes_dict.items():
-            substring = "{field_name:s}{colon:s}{old:s}{arrow:s}{new:s}".format(
-                field_name=field,
-                colon=colon,
-                old=values[0],
-                arrow=arrow,
-                new=values[1],
-            )
+            if type(values) == dict and values['type'] == 'm2m':
+                action_str = values['operation']
+                val_str = ', '.join(values['objects'])
+                substring = "{field_name:s}{colon:s}{action:s} {vals:s}".format(
+                    field_name=field,
+                    colon=colon,
+                    action=action_str,
+                    vals=val_str,
+                )
+            else:
+                substring = "{field_name:s}{colon:s}{old:s}{arrow:s}{new:s}".format(
+                    field_name=field,
+                    colon=colon,
+                    old=values[0],
+                    arrow=arrow,
+                    new=values[1],
+                )
             substrings.append(substring)
 
         return separator.join(substrings)
+
+    changes_str = property(get_changes_str)
 
     @property
     def changes_display_dict(self):

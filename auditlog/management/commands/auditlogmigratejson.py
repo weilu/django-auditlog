@@ -39,11 +39,19 @@ class Command(BaseCommand):
             dest="batch_size",
             type=int,
         )
+        group.add_argument(
+            "-m",
+            "--migrate-m2m",
+            action="store_true",
+            help="Also migrate old patched version of m2m handling",
+            dest="m2m",
+        )
 
     def handle(self, *args, **options):
         database = options["db"]
         batch_size = options["batch_size"]
         check = options["check"]
+        migrate_m2m = options["m2m"]
 
         if (not self.check_logs()) or check:
             return
@@ -56,7 +64,7 @@ class Command(BaseCommand):
                 )
             )
         else:
-            result = self.migrate_using_django(batch_size)
+            result = self.migrate_using_django(batch_size, migrate_m2m)
             self.stdout.write(
                 self.style.SUCCESS(f"Updated {result} records using django operations.")
             )
@@ -83,7 +91,7 @@ class Command(BaseCommand):
             changes_text__isnull=False, changes__isnull=True
         ).exclude(changes_text__exact="")
 
-    def migrate_using_django(self, batch_size):
+    def migrate_using_django(self, batch_size, migrate_m2m):
         def _apply_django_migration(_logs) -> int:
             import json
 
@@ -91,7 +99,27 @@ class Command(BaseCommand):
             errors = []
             for log in _logs:
                 try:
-                    log.changes = json.loads(log.changes_text)
+                    changes = json.loads(log.changes_text)
+                    if migrate_m2m and len(changes) == 1:
+                        field_name = list(changes.keys())[0]
+                        change = changes[field_name]
+                        if 'Added' in change:
+                            changes = {
+                                field_name: {
+                                    "type": "m2m",
+                                    "operation": 'add',
+                                    "objects": change['Added'],
+                                }
+                            }
+                        elif 'Removed' in change:
+                            changes = {
+                                field_name: {
+                                    "type": "m2m",
+                                    "operation": 'delete',
+                                    "objects": change['Removed'],
+                                }
+                            }
+                    log.changes = changes
                 except ValueError:
                     errors.append(log.id)
                 else:
